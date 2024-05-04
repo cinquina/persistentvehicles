@@ -1,5 +1,24 @@
-local ESX = exports.es_extended:getSharedObject()
 local Vehicles = {}
+local ezBridge = {}
+
+if GetResourceState("es_extended") == "started" then
+    local ESX = exports.es_extended:getSharedObject()
+    ezBridge.GetPlayer = ESX.GetPlayerFromId
+    ezBridge.HasPermission = function(source)
+        local player = ezBridge.GetPlayer(source)
+        return player.group == "admin"
+    end
+else
+    local QBCore = exports['qb-core']:GetCoreObject()
+    ezBridge.GetPlayer = function(source)
+        local player = QBCore.Functions.GetPlayer(source)
+        player.identifier = player.citizenid
+        return player
+    end
+    ezBridge.HasPermission = function(source)
+        return QBCore.Functions.HasPermission(source, 'admin')
+    end
+end
 
 vehiclesQuery = MySQL.query.await('SELECT * FROM `owned_vehicles`', {})
 if vehiclesQuery then
@@ -12,11 +31,13 @@ end
 CreateThread(function()
     if not Vehicles then return end
     for _, vehicleData in pairs(Vehicles) do
-        vehicleData.vehicle = type(vehicleData.vehicle) == "string" and json.decode(vehicleData.vehicle) or vehicleData.vehicle
-        
+        vehicleData.vehicle = type(vehicleData.vehicle) == "string" and json.decode(vehicleData.vehicle) or
+        vehicleData.vehicle
+
         if vehicleData.coords then
             vehicleData.coords = json.decode(vehicleData.coords)
-            local vehicle = CreateVehicleServerSetter(vehicleData.vehicle.model, vehicleData.type, vehicleData.coords.x, vehicleData.coords.y, vehicleData.coords.z, vehicleData.coords.w)
+            local vehicle = CreateVehicleServerSetter(vehicleData.vehicle.model, vehicleData.type, vehicleData.coords.x,
+                vehicleData.coords.y, vehicleData.coords.z, vehicleData.coords.w)
             SetVehicleDoorsLocked(vehicle, 2)
             vehicleData.netId = NetworkGetNetworkIdFromEntity(vehicle)
         end
@@ -29,28 +50,32 @@ local function SaveVehiclesPositions()
         if DoesEntityExist(vehicle) then
             local coords = GetEntityCoords(vehicle)
 
-            MySQL.update.await('UPDATE owned_vehicles SET vehicle = ?, coords = ? WHERE plate = ?', { json.encode(v.vehicle), json.encode(vec4(coords.x, coords.y, coords.z, GetEntityHeading(vehicle))), v.plate })
+            MySQL.update.await('UPDATE owned_vehicles SET vehicle = ?, coords = ? WHERE plate = ?',
+                { json.encode(v.vehicle), json.encode(vec4(coords.x, coords.y, coords.z, GetEntityHeading(vehicle))), v
+                    .plate })
         end
     end
 end
 
 local function AddVehicle(targetId, props, coords, netId)
-    local xPlayer = ESX.GetPlayerFromId(targetId)
+    local xPlayer = ezBridge.GetPlayer(targetId)
     local entity = NetworkGetEntityFromNetworkId(netId)
     local vehicleType = GetVehicleType(entity)
-    MySQL.insert('INSERT INTO `owned_vehicles` (owner, plate, vehicle, type, coords) VALUES (?, ?, ?, ?, ?)', { xPlayer.identifier, props.plate, json.encode(props), vehicleType or "automobile", coords and json.encode(coords) or nil }, function(id)
-            local data = {
-                owner = xPlayer.identifier,
-                plate = props.plate,
-                vehicle = props,
-                type = vehicleType or "automobile",
-                coords = coords
-            }
-            Vehicles[props.plate] = data
-            if not coords then
-                DeleteEntity(entity)
-            end
-        end)
+    MySQL.insert('INSERT INTO `owned_vehicles` (owner, plate, vehicle, type, coords) VALUES (?, ?, ?, ?, ?)',
+        { xPlayer.identifier, props.plate, json.encode(props), vehicleType or "automobile", coords and
+        json.encode(coords) or nil }, function(id)
+        local data = {
+            owner = xPlayer.identifier,
+            plate = props.plate,
+            vehicle = props,
+            type = vehicleType or "automobile",
+            coords = coords
+        }
+        Vehicles[props.plate] = data
+        if not coords then
+            DeleteEntity(entity)
+        end
+    end)
 end
 
 exports('AddVehicle', AddVehicle)
@@ -105,21 +130,26 @@ AddEventHandler("txAdmin:events:scheduledRestart", function(eventData)
     end
 end)
 
-ESX.RegisterCommand({ 'saveallvehs' }, { 'admin' }, function(xPlayer, args, showError)
-    SaveVehiclesPositions()
-end, false, { help = "Saves all the vehicles on the database" })
+RegisterCommand('saveallvehs', function(source)
+    if ezBridge.HasPermission(source) then
+        SaveVehiclesPositions()
+    end
+end)
 
-ESX.RegisterCommand({ 'rollbackvehs' }, { 'admin' }, function(xPlayer, args, showError)
-    for _, vehicleData in pairs(Vehicles) do
-        local veh = NetworkGetEntityFromNetworkId(vehicleData.netId)
-        if not DoesEntityExist(veh) then
-            if vehicleData.coords then
-                local vehicle = CreateVehicleServerSetter(vehicleData.vehicle.model, vehicleData.type, vehicleData.coords.x, vehicleData.coords.y, vehicleData.coords.z, vehicleData.coords.w)
-                SetVehicleDoorsLocked(vehicle, 2)
-                vehicleData.netId = NetworkGetNetworkIdFromEntity(vehicle)
-                SetVehicleNumberPlateText(vehicle, vehicleData.plate)
-                TriggerClientEvent('persistentvehicles:reloadProperties', -1, vehicleData.plate, vehicleData.netId)
+RegisterCommand('rollbackvehs', function(source)
+    if ezBridge.HasPermission(source) then
+        for _, vehicleData in pairs(Vehicles) do
+            local veh = NetworkGetEntityFromNetworkId(vehicleData.netId)
+            if not DoesEntityExist(veh) then
+                if vehicleData.coords then
+                    local vehicle = CreateVehicleServerSetter(vehicleData.vehicle.model, vehicleData.type,
+                        vehicleData.coords.x, vehicleData.coords.y, vehicleData.coords.z, vehicleData.coords.w)
+                    SetVehicleDoorsLocked(vehicle, 2)
+                    vehicleData.netId = NetworkGetNetworkIdFromEntity(vehicle)
+                    SetVehicleNumberPlateText(vehicle, vehicleData.plate)
+                    TriggerClientEvent('persistentvehicles:reloadProperties', -1, vehicleData.plate, vehicleData.netId)
+                end
             end
         end
     end
-end, false, { help = "Rollbacks all the deleted persistent vehicles" })
+end)
