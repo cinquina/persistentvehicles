@@ -1,11 +1,11 @@
 # 🚗 persistent vehicles
 **ESX** (easy to convert to QB) and **ox_lib** based persistent vehicles system.
-I haven't worked on this too much, decided to release because it's working but unfinished, so y'all can use it but at your own risk.
-You can use it and it should be safe but **IT IS NOT USER FRIENDLY** you might need to get help by a **Developer** to use this script, since it is **NOT** completely ready for production.
+I haven't worked on this too much, decided to release because it's working but in my opinion not fully ready for production, so y'all can use it but at your own risk.
+You can use it and it should be safe but **IT IS NOT USER FRIENDLY** you might need to get help by a **Developer** to use this script since it is **NOT** completely ready for production.
 If you need help you can join our [Discord Server](https://discord.gg/547nKvQhZ7)
 
 ## ❓ Documentation
-- How to add new vehicle?
+- How to give a vehicle?
 ```lua
     Server side:
     exports["persistentvehicles"]:AddVehicle(targetId, vehicleProps, coords, netId)
